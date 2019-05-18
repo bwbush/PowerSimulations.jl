@@ -69,7 +69,12 @@ function add_to_cost(ps_m::CanonicalModel,
                      cost_symbol::Symbol, sign::Int64 = 1) where {C <: PSY.Device}
 
    for d in devices
-        cost_expression = ps_cost(ps_m, ps_m.variables[var_name][d.name,:], getfield(d.econ,cost_symbol), sign)
+        cost_expression = Nothing
+        try # FIXME: This is a workaround for <https://github.com/NREL/PowerSystems.jl/issues/244>.
+           cost_expression = ps_cost(ps_m, ps_m.variables[var_name][d.name,:], getfield(d.econ,cost_symbol), sign)
+        catch
+           cost_expression = ps_cost(ps_m, ps_m.variables[var_name][d.name,:], getfield(d,cost_symbol), sign)
+        end
         ps_m.cost_function += cost_expression
     end
 
