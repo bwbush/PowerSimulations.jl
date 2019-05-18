@@ -113,7 +113,8 @@ function cost_function(ps_m::CanonicalModel,
 
     add_to_cost(ps_m, devices,
                       :Pel,
-                      :sheddingcost)
+                      :sheddingcost,
+                      -1)
 
     return
 
@@ -170,11 +171,11 @@ function _nodal_expression_fixed(ps_m::CanonicalModel,
                                                                      S <: PM.AbstractPowerFormulation}
 
     for t in time_range, d in devices
-        _add_to_expression!(ps_m.expressions[:var_active], 
-                            d.bus.number, t, 
+        _add_to_expression!(ps_m.expressions[:var_active],
+                            d.bus.number, t,
                             -1*d.maxactivepower * values(d.scalingfactor)[t]);
-        _add_to_expression!(ps_m.expressions[:var_reactive], 
-                            d.bus.number, t, 
+        _add_to_expression!(ps_m.expressions[:var_reactive],
+                            d.bus.number, t,
                             -1*d.maxreactivepower * values(d.scalingfactor)[t]);
     end
 
@@ -190,8 +191,8 @@ function _nodal_expression_fixed(ps_m::CanonicalModel,
                                                                      S <: PM.AbstractActivePowerFormulation}
 
     for t in time_range, d in devices
-        _add_to_expression!(ps_m.expressions[:var_active], 
-                            d.bus.number, t, 
+        _add_to_expression!(ps_m.expressions[:var_active],
+                            d.bus.number, t,
                             -1*d.maxactivepower * values(d.scalingfactor)[t])
     end
 
@@ -205,7 +206,7 @@ function nodal_expression(ps_m::CanonicalModel,
                             time_range::UnitRange{Int64},
                             parameters::Bool) where {L <: PSY.ElectricLoad,
                                                             S <: PM.AbstractPowerFormulation}
-                                                                                                               
+
     if parameters
         _nodal_expression_param(ps_m, devices, system_formulation, time_range)
     else
