@@ -1,14 +1,14 @@
-# PowerSimulations
+# PowerSimulations 
 
 [![Build Status](https://img.shields.io/travis/com/NREL/PowerSimulations.jl/master.svg)](https://travis-ci.com/NREL/PowerSimulations.jl)
 [![Build status](https://img.shields.io/appveyor/ci/kdheepak/powersimulations-jl/master.svg)](https://ci.appveyor.com/project/kdheepak/powersimulations-jl)
+[![codecov](https://codecov.io/gh/NREL/PowerSimulations.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/NREL/PowerSimulations.jl)
 [![Join the chat at https://gitter.im/NREL/PowerSimulations.jl](https://badges.gitter.im/NREL/PowerSimulations.jl.svg)](https://gitter.im/NREL/PowerSimulations.jl)
-
-**PowerSimulations is currently work in progress. Many of the functionalities are not currently available. Please follow the instructions below if you want to test some of the code already developed.**
 
 ## The current implementation of the functionalities can be seen in the test codes.
 
-PowerSimulations.jl is a Julia package for power system simulations. The objectives of the PowerSimulations package are:
+`PowerSimulations.jl` is a Julia package for power system modeling and simulation. The objectives of the package are:
+
 - Provide a flexible modeling framework that can accommodate problems of different complexity and at different time-scales.
 
 - Streamline the construction of large scale optimization problems to avoid repetition of work when adding/modifying model details.
@@ -36,29 +36,23 @@ For example, an annual production cost modeling simulation can be created by for
 
 ## Installation
 
-This package is not yet registered. **Until it is, things may change. It is perfectly
-usable but should not be considered stable**.
-
-You can install it by typing
-
 ```julia
-julia> using Pkg
-julia> Pkg.develop("https://github.com/NREL/PowerSimulations.jl")
+julia> ]
+(v1.1) pkg> add PowerSimulations
+(v1.1) pkg> add PowerSystems
 ```
 ## Usage
 
-Once installed, the `PowerSimulations` package can by going to the folder `.julia/dev/PowerSimulations` used by typing
+`PowerSimulations.jl` uses [PowerSystems.jl](https://github.com/NREL/PowerSystems.jl) to handle the data used in the simulations.  
 
 ```julia
-julia> ]
-(v0.7) pkg> activate .
-(PowerSimulations) pkg> instantiate
+using PowerSimulations
+using PowerSystems
 ```
 
 ## Development
 
 Contributions to the development and enahancement of PowerSimulations is welcome. Please see [CONTRIBUTING.md](https://github.com/NREL/PowerSimulations.jl/blob/master/CONTRIBUTING.md) for code contribution guidelines.
-
 
 ## License
 
