@@ -3,34 +3,74 @@ module PowerSimulations
 #################################################################################
 # Exports
 
+# Base Models
+export Simulation
+export OperationModel
+export ModelReference
+export InitialCondition
+
 #Network Relevant Exports
 export StandardPTDFForm
 export CopperPlatePowerModel
 
+######## Device Models ########
+export DeviceModel
+######## Branche Models ########
+export StaticLine
+export StaticTransformer
+export TapControl
+#export PhaseControl
+export HVDCLossless
+export HVDCDispatch
+#export VoltageSourceDC
+######## Load Models ########
+export StaticPowerLoad
+export InterruptiblePowerLoad
+export DispatchablePowerLoad
+######## Renewable Formulations ########
+export RenewableFixed
+export RenewableFullDispatch
+export RenewableConstantPowerFactor
+######## Hydro Formulations ########
+export HydroFixed
+######## Renewable Formulations ########
+export BookKeeping
+export BookKeepingwReservation
+######## Thermal Formulations ########
+export ThermalUnitCommitment
+export ThermalDispatch
+export ThermalRampLimited
+export ThermalDispatchNoMin
+
 #operation_models
-export UnitCommitment
-export EconomicDispatch
-export SCEconomicDispatch
-export OptimalPowerFlow
+#export UnitCommitment
+#export EconomicDispatch
+#export OptimalPowerFlow
 
 #functions
+export construct_device!
+export construct_network!
 export solve_op_model!
-export demand_constraints
+export demandconstraints
 
 
 #################################################################################
 # Imports
 import JuMP
 import ParameterJuMP
-#using TimeSeries
+import MathOptFormat
+import TimeSeries
 import PowerSystems
 import PowerModels
 import MathOptInterface
 import DataFrames
 import LinearAlgebra
 #import LinearAlgebra.BLAS #needed for the simulation stage
-import AxisArrays
 import Dates
+
+# so that users do not need to import JuMP to use a solver with PowerModels
+import JuMP: with_optimizer
+export with_optimizer
 
 #################################################################################
 # Type Alias From other Packages
@@ -40,20 +80,21 @@ const PSI = PowerSimulations
 const MOI = MathOptInterface
 const MOIU = MathOptInterface.Utilities
 const PJ = ParameterJuMP
+const MOPFM = MathOptFormat.MOF.Model()
 
 #Type Alias for JuMP and PJ containers
 const JuMPExpressionMatrix = Matrix{<:JuMP.AbstractJuMPScalar}
-const PGAE{V} = PJ.ParametrizedGenericAffExpr{Float64,V} where V <: JuMP.AbstractVariableRef
-const GAE{V} = JuMP.GenericAffExpr{Float64,V} where V <: JuMP.AbstractVariableRef
+const PGAE{V} = PJ.ParametrizedGenericAffExpr{Float64, V} where V <: JuMP.AbstractVariableRef
+const GAE{V} = JuMP.GenericAffExpr{Float64, V} where V <: JuMP.AbstractVariableRef
 const JuMPAffineExpressionArray = Matrix{GAE{V}} where V <: JuMP.AbstractVariableRef
-
-#Type Alias for Unions
-const FixResource = Union{PSY.RenewableFix, PSY.HydroFix}
+const JuMPConstraintArray = JuMP.Containers.DenseAxisArray{JuMP.ConstraintRef}
+const JuMPParamArray = JuMP.Containers.DenseAxisArray{PJ.ParameterRef}
 
 #Type Alias for long type signatures
-const MinMax = NamedTuple{(:min, :max),Tuple{Float64,Float64}}
+const MinMax = NamedTuple{(:min, :max), NTuple{2, Float64}}
 const NamedMinMax = Tuple{String, MinMax}
-const UpDown = NamedTuple{(:up, :down),Tuple{Float64,Float64}}
+const UpDown = NamedTuple{(:up, :down), NTuple{2, Float64}}
+const InOut = NamedTuple{(:in, :out), NTuple{2, Float64}}
 
 #################################################################################
 # Includes
@@ -67,18 +108,20 @@ include("core/core_structs/device_model.jl")
 include("core/core_structs/canonical_model.jl")
 include("core/core_structs/service_model.jl")
 include("core/core_structs/operation_model.jl")
+include("core/core_structs/simulation_model.jl")
 include("core/device_constructor.jl")
 include("core/canonical_constructor.jl")
 include("core/operations_constructor.jl")
 include("core/core_structs/results_model.jl")
-#include("core/core_structs/simulation_model.jl")
+include("core/simulation_constructor.jl")
 
 #Device Modeling components
 include("devices/device_models/common.jl")
 include("devices/device_models/renewable_generation.jl")
 include("devices/device_models/thermal_generation.jl")
 include("devices/device_models/electric_loads.jl")
-include("devices/device_models/branches.jl")
+include("devices/device_models/AC_branches.jl")
+include("devices/device_models/DC_branches.jl")
 include("devices/device_models/storage.jl")
 include("devices/device_models/hydro_generation.jl")
 
@@ -107,10 +150,12 @@ include("demand_response/demand_response.jl")
 include("demand_response/bev.jl")
 
 #Utils
+include("routines/printing.jl")
 include("routines/solve_routines.jl")
-include("routines/get_ini_cond.jl")
-#include("routines/simulation_routines.jl")
-#include("routines/device_retreval.jl")
+include("routines/simulation_feedback.jl")
+include("routines/optimization_debugging.jl")
+include("routines/simulation_routines.jl")
+include("routines/write_model.jl")
 
 #################################################################################
 ##### JuMP methods overloading

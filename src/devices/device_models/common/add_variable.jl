@@ -3,15 +3,20 @@ function _container_spec(m::M, ax...) where M <: JuMP.AbstractModel
 end
 
 function add_variable(ps_m::CanonicalModel,
-                      devices::Array{T,1},
-                      time_range::UnitRange{Int64},
+                      devices::D,
                       var_name::Symbol,
-                      binary::Bool) where {T <: PSY.Device}
+                      binary::Bool) where {D <: Union{Vector{<:PSY.Device},
+                                                      PSY.FlattenIteratorWrapper{<:PSY.Device}}}
 
-    ps_m.variables[var_name] = _container_spec(ps_m.JuMPmodel, [d.name for d in devices], time_range)
+   time_steps = model_time_steps(ps_m)
+   ps_m.variables[var_name] = _container_spec(ps_m.JuMPmodel, (PSY.get_name(d) for d in devices), time_steps)
 
-   for t in time_range, d in devices
-       ps_m.variables[var_name][d.name,t] = JuMP.@variable(ps_m.JuMPmodel, base_name="$(var_name)_{$(d.name),$(t)}", start = 0.0, binary=binary)
+   for t in time_steps, d in devices
+      name = PSY.get_name(d)
+      
+      ps_m.variables[var_name][name, t] = JuMP.@variable(ps_m.JuMPmodel,
+                                                        base_name="$(var_name)_{$(name), $(t)}",
+                                                        binary=binary)
    end
 
    return
@@ -19,17 +24,26 @@ function add_variable(ps_m::CanonicalModel,
 end
 
 function add_variable(ps_m::CanonicalModel,
-                      devices::Array{T,1},
-                      time_range::UnitRange{Int64},
+                      devices::D,
                       var_name::Symbol,
                       binary::Bool,
-                      expression::Symbol) where {T <: PSY.Device}
+                      expression::Symbol) where {D <: Union{Vector{<:PSY.Device},
+                                                            PSY.FlattenIteratorWrapper{<:PSY.Device}}}
 
-    ps_m.variables[var_name] = _container_spec(ps_m.JuMPmodel, [d.name for d in devices], time_range)
+   time_steps = model_time_steps(ps_m)
+   ps_m.variables[var_name] = _container_spec(ps_m.JuMPmodel, (PSY.get_name(d) for d in devices), time_steps)
 
-   for t in time_range, d in devices
-       ps_m.variables[var_name][d.name,t] = JuMP.@variable(ps_m.JuMPmodel, base_name="$(var_name)_{$(d.name),$(t)}", start = 0.0, binary=binary)
-       _add_to_expression!(ps_m.expressions[expression], d.bus.number, t, ps_m.variables[var_name][d.name,t])
+   for t in time_steps, d in devices
+      name = PSY.get_name(d)
+
+      ps_m.variables[var_name][name, t] = JuMP.@variable(ps_m.JuMPmodel,
+                                             base_name="{$(var_name)}_{$(name), $(t)}",
+                                             binary=binary)
+
+      _add_to_expression!(ps_m.expressions[expression],
+                          PSY.get_number(PSY.get_bus(d)),
+                          t,
+                          ps_m.variables[var_name][name, t])
    end
 
    return
@@ -37,18 +51,27 @@ function add_variable(ps_m::CanonicalModel,
 end
 
 function add_variable(ps_m::CanonicalModel,
-                      devices::Array{T,1},
-                      time_range::UnitRange{Int64},
+                      devices::D,
                       var_name::Symbol,
                       binary::Bool,
                       expression::Symbol,
-                      sign::Int64) where {T <: PSY.Device}
+                      sign::Float64) where {D <: Union{Vector{<:PSY.Device},
+                                          PSY.FlattenIteratorWrapper{<:PSY.Device}}}
 
-    ps_m.variables[var_name] = _container_spec(ps_m.JuMPmodel, [d.name for d in devices], time_range)
+    time_steps = model_time_steps(ps_m)
+    ps_m.variables[var_name] = _container_spec(ps_m.JuMPmodel, (PSY.get_name(d) for d in devices), time_steps)
 
-   for t in time_range, d in devices
-       ps_m.variables[var_name][d.name,t] = JuMP.@variable(ps_m.JuMPmodel, base_name="$(var_name)_{$(d.name),$(t)}", start = 0.0, binary=binary)
-       _add_to_expression!(ps_m.expressions[expression], d.bus.number, t, ps_m.variables[var_name][d.name,t], sign)
+   for t in time_steps, d in devices
+       name = PSY.get_name(d)
+
+       ps_m.variables[var_name][name, t] = JuMP.@variable(ps_m.JuMPmodel,
+                                                        base_name = "{$(var_name)}_{$(name), $(t)}",
+                                                        binary = binary)
+
+       _add_to_expression!(ps_m.expressions[expression],
+                           PSY.get_number(PSY.get_bus(d)),
+                           t,
+                           ps_m.variables[var_name][name, t], sign)
    end
 
    return

@@ -1,117 +1,125 @@
-function construct_device!(ps_m::CanonicalModel,
-                           device::Type{R},
-                           device_formulation::Type{D},
-                           system_formulation::Type{S},
-                           sys::PSY.System,
-                           time_range::UnitRange{Int64};
-                           kwargs...) where {R <: PSY.RenewableGen,
-                                             D <: AbstractRenewableDispatchForm,
-                                             S <: PM.AbstractPowerFormulation}
+function _internal_device_constructor!(ps_m::CanonicalModel,
+                                        device::Type{R},
+                                        device_formulation::Type{D},
+                                        system_formulation::Type{S},
+                                        sys::PSY.System;
+                                        kwargs...) where {R <: PSY.RenewableGen,
+                                                          D <: AbstractRenewableDispatchForm,
+                                                          S <: PM.AbstractPowerFormulation}
 
-    if !isa(sys.generators.renewable, Nothing)
 
-        parameters = get(kwargs, :parameters, true)
+    forecast = get(kwargs, :forecast, true)
 
-        fixed_resources = [fs for fs in sys.generators.renewable if isa(fs,PSY.RenewableFix)]
+    devices = PSY.get_components(device, sys)
 
-        controllable_resources = [fs for fs in sys.generators.renewable if !isa(fs,PSY.RenewableFix)]
+    if validate_available_devices(devices, device)
+        return
+    end
 
-        if !isempty(controllable_resources)
+    #Variables
+    activepower_variables(ps_m, devices);
 
-            #Variables
-            activepower_variables(ps_m, controllable_resources, time_range);
+    reactivepower_variables(ps_m, devices);
 
-            reactivepower_variables(ps_m, controllable_resources, time_range);
+    #Constraints
+    if forecast
+        first_step = PSY.get_forecasts_initial_time(sys)
+        forecasts = PSY.get_forecasts(PSY.Deterministic{R}, sys, first_step)
+        activepower_constraints(ps_m, forecasts, device_formulation, system_formulation)
+    else
+        activepower_constraints(ps_m, devices, device_formulation, system_formulation)
+    end
 
-            #Constraints
-            activepower_constraints(ps_m, controllable_resources, device_formulation, system_formulation, time_range, parameters)
+    reactivepower_constraints(ps_m, devices, device_formulation, system_formulation)
 
-            reactivepower_constraints(ps_m, controllable_resources, device_formulation, system_formulation, time_range)
+    #Cost Function
+    cost_function(ps_m, devices, device_formulation, system_formulation)
 
-            #Cost Function
-            cost_function(ps_m, controllable_resources, device_formulation, system_formulation)
+    return
 
-        else
-            @warn("The Data Doesn't Contain Controllable Renewable Resources, Consider Changing the Device Formulation to RenewableFixed")
-        end
+end
 
-        #add to expression
+function _internal_device_constructor!(ps_m::CanonicalModel,
+                                        device::Type{R},
+                                        device_formulation::Type{D},
+                                        system_formulation::Type{S},
+                                        sys::PSY.System;
+                                        kwargs...) where {R <: PSY.RenewableGen,
+                                                          D <: AbstractRenewableDispatchForm,
+                                                          S <: PM.AbstractActivePowerFormulation}
 
-        if !isempty(fixed_resources)
-            nodal_expression(ps_m, fixed_resources, system_formulation, time_range, parameters)
-        end
+    forecast = get(kwargs, :forecast, true)
 
+    devices = PSY.get_components(device, sys)
+
+    if validate_available_devices(devices, device)
+        return
+    end
+
+    #Variables
+    activepower_variables(ps_m, devices)
+
+    #Constraints
+    if forecast
+        first_step = PSY.get_forecasts_initial_time(sys)
+        forecasts = PSY.get_forecasts(PSY.Deterministic{R}, sys, first_step)
+        isempty(forecasts) && error("System has no forecasts")
+        activepower_constraints(ps_m, forecasts, device_formulation, system_formulation)
+    else
+        activepower_constraints(ps_m, devices, device_formulation, system_formulation)
+    end
+
+    #Cost Function
+    cost_function(ps_m, devices, device_formulation, system_formulation)
+
+    return
+
+end
+
+function _internal_device_constructor!(ps_m::CanonicalModel,
+                                        device::Type{R},
+                                        device_formulation::Type{RenewableFixed},
+                                        system_formulation::Type{S},
+                                        sys::PSY.System;
+                                        kwargs...) where {R <: PSY.RenewableGen,
+                                                          S <: PM.AbstractPowerFormulation}
+
+    forecast = get(kwargs, :forecast, true)
+
+    devices = PSY.get_components(device, sys)
+
+    if validate_available_devices(devices, device)
+        return
+    end
+
+    if forecast
+        first_step = PSY.get_forecasts_initial_time(sys)
+        forecasts = PSY.get_forecasts(PSY.Deterministic{R}, sys, first_step)
+        nodal_expression(ps_m, forecasts, system_formulation)
+    else
+        nodal_expression(ps_m, devices, system_formulation)
     end
 
     return
 
 end
 
-function construct_device!(ps_m::CanonicalModel,
-                           device::Type{R},
-                           device_formulation::Type{D},
-                           system_formulation::Type{S},
-                           sys::PSY.System,
-                           time_range::UnitRange{Int64};
-                           kwargs...) where {R <: PSY.RenewableGen,
-                                             D <: AbstractRenewableDispatchForm,
-                                             S <: PM.AbstractActivePowerFormulation}
+function _internal_device_constructor!(ps_m::CanonicalModel,
+                                        device::Type{PSY.RenewableFix},
+                                        device_formulation::Type{D},
+                                        system_formulation::Type{S},
+                                        sys::PSY.System;
+                                        kwargs...) where {D <: AbstractRenewableDispatchForm,
+                                                          S <: PM.AbstractPowerFormulation}
 
-
-
-    if !isa(sys.generators.renewable, Nothing)
-
-        parameters = get(kwargs, :parameters, true)
-
-        fixed_resources = [fs for fs in sys.generators.renewable if isa(fs,PSY.RenewableFix)]
-
-        controllable_resources = [fs for fs in sys.generators.renewable if !isa(fs,PSY.RenewableFix)]
-
-        if !isempty(controllable_resources)
-
-            #Variables
-            activepower_variables(ps_m, controllable_resources, time_range)
-
-            #Constraints
-            activepower_constraints(ps_m, controllable_resources, device_formulation, system_formulation, time_range, parameters)
-
-            #Cost Function
-            cost_function(ps_m, controllable_resources, device_formulation, system_formulation)
-
-        else
-            @warn("The Data Doesn't Contain Controllable Renewable Resources, Consider Changing the Device Formulation to RenewableFixed")
-
-        end
-
-        #add to expression
-
-        if !isempty(fixed_resources)
-            nodal_expression(ps_m, fixed_resources, system_formulation, time_range, parameters)
-        end
-
+    if device_formulation != RenewableFixed
+        @warn("The Formulation $(D) only applies to Controllable Renewable Resources, \n Consider Changing the Device Formulation to RenewableFixed")
     end
 
-    return
-
-end
-
-function construct_device!(ps_m::CanonicalModel,
-                           device::Type{R},
-                           device_formulation::Type{PSI.RenewableFixed},
-                           system_formulation::Type{S},
-                           sys::PSY.System,
-                           time_range::UnitRange{Int64};
-                           kwargs...) where {R <: PSY.RenewableGen,
-                                             S <: PM.AbstractPowerFormulation}
-
-
-    if !isa(sys.generators.renewable, Nothing)
-
-        parameters = get(kwargs, :parameters, true)
-
-        nodal_expression(ps_m, sys.generators.renewable, system_formulation, time_range, parameters)
-    end
-
-    return
+    _internal_device_constructor!(ps_m,
+                                  device,
+                                  RenewableFixed,
+                                  sys,
+                                  kwargs...)
 
 end

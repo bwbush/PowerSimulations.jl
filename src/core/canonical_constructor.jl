@@ -1,21 +1,8 @@
+const DSDA = Dict{Symbol, JuMP.Containers.DenseAxisArray}
 
-function _container_spec(V::DataType, ax...; kwargs...)
+function _make_container_array(V::DataType, ax...; kwargs...)
 
     parameters = get(kwargs, :parameters, true)
-
-    # While JuMP fixes the isassigned problems
-     # While JuMP fixes the isassigned problems
-    #=
-    if parameters
-            cont = JuMP.Containers.DenseAxisArray{PGAE{V}}(undef, ax...)
-            _remove_undef!(cont.data)
-        return cont
-    else
-            cont = JuMP.Containers.DenseAxisArray{GAE{V}}(undef, ax...)
-            _remove_undef!(cont.data)
-        return cont
-    end
-    =#
 
     if parameters
         return JuMP.Containers.DenseAxisArray{PGAE{V}}(undef, ax...)
@@ -23,48 +10,61 @@ function _container_spec(V::DataType, ax...; kwargs...)
         return JuMP.Containers.DenseAxisArray{GAE{V}}(undef, ax...)
     end
 
+    return
+
 end
+
+function _make_expressions_dict(transmission::Type{S},
+                                V::DataType,
+                                bus_numbers::Vector{Int64},
+                                time_steps::UnitRange{Int64}; kwargs...) where {S <: PM.AbstractPowerFormulation}
+
+    return DSDA(:nodal_balance_active =>  _make_container_array(V,
+                                                                bus_numbers,
+                                                                time_steps; kwargs...),
+                :nodal_balance_reactive => _make_container_array(V,
+                                                                 bus_numbers,
+                                                                 time_steps; kwargs...))
+
+end
+
+function _make_expressions_dict(transmission::Type{S},
+                                V::DataType,
+                                bus_numbers::Vector{Int64},
+                                time_steps::UnitRange{Int64}; kwargs...) where {S <: PM.AbstractActivePowerFormulation}
+
+    return DSDA(:nodal_balance_active =>  _make_container_array(V,
+                                                                bus_numbers,
+                                                                time_steps; kwargs...))
+end
+
 
 function _canonical_model_init(bus_numbers::Vector{Int64},
                               optimizer::Union{Nothing,JuMP.OptimizerFactory},
                               transmission::Type{S},
-                              time_range::UnitRange{Int64}; kwargs...) where {S <: PM.AbstractPowerFormulation}
+                              time_steps::UnitRange{Int64},
+                              resolution::Dates.Period; kwargs...) where
+                                    {S <: PM.AbstractPowerFormulation}
 
     parameters = get(kwargs, :parameters, true)
-
     jump_model = _pass_abstract_jump(optimizer; kwargs...)
     V = JuMP.variable_type(jump_model)
 
-    ps_model = CanonicalModel(jump_model,
-                            Dict{Symbol, JuMP.Containers.DenseAxisArray}(),
-                            Dict{Symbol, JuMP.Containers.DenseAxisArray}(),
-                            zero(JuMP.GenericAffExpr{Float64, V}),
-                            Dict{Symbol, JuMP.Containers.DenseAxisArray}(:var_active => _container_spec(V, bus_numbers, time_range; kwargs...),
-                                                                         :var_reactive => _container_spec(V, bus_numbers, time_range; kwargs...)),
-                            parameters ? Dict{Symbol,JuMP.Containers.DenseAxisArray}() : nothing,
-                            Dict{Symbol,Array{InitialCondition}}(),
-                            nothing);
-
-    return ps_model
-
-end
-
-function _canonical_model_init(bus_numbers::Vector{Int64},
-                               optimizer::Union{Nothing,JuMP.OptimizerFactory},
-                               transmission::Type{S},
-                               time_range::UnitRange{Int64}; kwargs...) where {S <: PM.AbstractActivePowerFormulation}
-
-    parameters = get(kwargs, :parameters, true)
-
-    jump_model = _pass_abstract_jump(optimizer; kwargs...)
-    V = JuMP.variable_type(jump_model)
+    # TODO: Instantiate the PM Object here
 
     ps_model = CanonicalModel(jump_model,
-                              Dict{Symbol, JuMP.Containers.DenseAxisArray}(),
-                              Dict{Symbol, JuMP.Containers.DenseAxisArray}(),
+                              parameters,
+                              get(kwargs, :sequential_runs, false),
+                              time_steps,
+                              resolution,
+                              DSDA(),
+                              DSDA(),
                               zero(JuMP.GenericAffExpr{Float64, V}),
-                              Dict{Symbol, JuMP.Containers.DenseAxisArray}(:var_active => _container_spec(V, bus_numbers, time_range; kwargs...)),
-                              parameters ? Dict{Symbol,JuMP.Containers.DenseAxisArray}() : nothing,
+                              _make_expressions_dict(transmission,
+                                                     V,
+                                                     bus_numbers,
+                                                     time_steps; kwargs...),
+                              parameters ? DSDA() : nothing,
                               Dict{Symbol,Array{InitialCondition}}(),
                               nothing);
 
@@ -76,36 +76,55 @@ function  build_canonical_model(transmission::Type{T},
                                 devices::Dict{Symbol, DeviceModel},
                                 branches::Dict{Symbol, DeviceModel},
                                 services::Dict{Symbol, ServiceModel},
-                                system::PSY.System,
+                                sys::PSY.System,
                                 optimizer::Union{Nothing,JuMP.OptimizerFactory}=nothing;
                                 kwargs...) where {T <: PM.AbstractPowerFormulation}
 
-time_range = 1:system.time_periods
-bus_numbers = [b.number for b in system.buses]
 
-ps_model = _canonical_model_init(bus_numbers, optimizer, transmission, time_range; kwargs...)
+    forecast = get(kwargs, :forecast, true)
 
-# Build Injection devices
-for mod in devices
-    construct_device!(ps_model, mod[2], transmission, system, time_range; kwargs...)
-end
+    if forecast
+        horizon = PSY.get_forecasts_horizon(sys)
+        time_steps = 1:horizon
+        resolution = PSY.get_forecasts_resolution(sys)
+    else
+        resolution = Dates.Hour(1)
+        time_steps = 1:1
+    end
 
-# Build Network
-construct_network!(ps_model, transmission, system, time_range; kwargs...)
+    bus_numbers = sort([PSY.get_number(b) for b in PSY.get_components(PSY.Bus, sys)])
 
-# Build Branches
-for mod in branches
-    construct_device!(ps_model, mod[2], transmission, system, time_range; kwargs...)
-end
+    ps_model = _canonical_model_init(bus_numbers,
+                                     optimizer,
+                                     transmission,
+                                     time_steps,
+                                     resolution; kwargs...)
 
-#Build Service
-for mod in services
-    construct_service!(ps_model, mod[2], transmission, system, time_range; kwargs...)
-end
+    # Build Injection devices
+    for mod in devices
+        @info "Building $(mod[2].device) with $(mod[2].formulation) formulation"
+        construct_device!(ps_model, mod[2], transmission, sys; kwargs...)
+    end
 
-# Objective Function
-JuMP.@objective(ps_model.JuMPmodel, Min, ps_model.cost_function)
+    # Build Network
+    @info "Building $(transmission) network formulation"
+    construct_network!(ps_model, transmission, sys; kwargs...)
 
-return ps_model
+    # Build Branches
+    for mod in branches
+        @info "Building $(mod[2].device) with $(mod[2].formulation) formulation"
+        construct_device!(ps_model, mod[2], transmission, sys; kwargs...)
+    end
+
+    #Build Service
+    for mod in services
+        #construct_service!(ps_model, mod[2], transmission, sys, time_steps, resolution; kwargs...)
+    end
+
+    # Objective Function
+    @info "Building Objective"
+    JuMP.@objective(ps_model.JuMPmodel, Min, ps_model.cost_function)
+
+    return ps_model
 
 end

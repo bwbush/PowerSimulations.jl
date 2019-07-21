@@ -1,21 +1,26 @@
 function device_commitment(ps_m::CanonicalModel,
                         initial_conditions::Vector{InitialCondition},
-                        time_range::UnitRange{Int64},
                         cons_name::Symbol,
-                        var_names::Tuple{Symbol,Symbol,Symbol})
+                        var_names::Tuple{Symbol, Symbol, Symbol})
 
-    ps_m.constraints[cons_name] = JuMP.Containers.DenseAxisArray{JuMP.ConstraintRef}(undef, ps_m.variables[var_names[1]].axes[1], time_range)
+    time_steps = model_time_steps(ps_m)
+    var1 = var(ps_m, var_names[1])
+    var2 = var(ps_m, var_names[2])
+    var3 = var(ps_m, var_names[3])
+    var1_names = axes(var1, 1)
+    _add_cons_container!(ps_m, cons_name, var1_names, time_steps)
+    constraint = con(ps_m, cons_name)
 
-    for i in initial_conditions
-
-        ps_m.constraints[cons_name][i.device.name, 1] = JuMP.@constraint(ps_m.JuMPmodel, ps_m.variables[var_names[3]][i.device.name, 1] == i.value + ps_m.variables[var_names[1]][i.device.name, 1] - ps_m.variables[var_names[2]][i.device.name, 1])
-
+    for ic in initial_conditions
+        name = PSY.get_name(ic.device)
+        constraint[name, 1] = JuMP.@constraint(ps_m.JuMPmodel,
+                               var3[name, 1] == ic.value + var1[name, 1] - var2[name, 1])
     end
 
-    for t in time_range[2:end], i in initial_conditions
-
-        ps_m.constraints[cons_name][i.device.name, t] = JuMP.@constraint(ps_m.JuMPmodel, ps_m.variables[var_names[3]][i.device.name, t] == ps_m.variables[var_names[3]][i.device.name, t-1] + ps_m.variables[var_names[1]][i.device.name, t] - ps_m.variables[var_names[2]][i.device.name, t])
-
+    for t in time_steps[2:end], i in initial_conditions
+        name = PSY.get_name(i.device)
+        constraint[name, 1] = JuMP.@constraint(ps_m.JuMPmodel,
+                        var3[name, t] == var3[name, t-1] + var1[name, t] - var2[name, t])
     end
 
     return

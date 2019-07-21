@@ -1,89 +1,148 @@
-function construct_device!(ps_m::CanonicalModel,
-                           device::Type{St},
-                           device_formulation::Type{D},
-                           system_formulation::Type{S},
-                           sys::PSY.System,
-                           time_range::UnitRange{Int64};
-                           kwargs...) where {St <: PSY.Storage,
-                                             D <: PSI.AbstractStorageForm,
-                                             S <: PM.AbstractPowerFormulation}
+function _internal_device_constructor!(ps_m::CanonicalModel,
+                                        device::Type{St},
+                                        device_formulation::Type{D},
+                                        system_formulation::Type{S},
+                                        sys::PSY.System;
+                                        kwargs...) where {St <: PSY.Storage,
+                                                            D <: AbstractStorageForm,
+                                                            S <: PM.AbstractPowerFormulation}
 
-    #wrangle initial_conditions
-    if  !isempty(keys(ps_m.initial_conditions))
 
-        if "energy_initial_conditions" in keys(ps_m.initial_conditions)
-             energy_initial_conditions = ps_m.initial_conditions["energy_initial_conditions"]
-        else
-             @warn("No storage energy initial conditions provided")
-        end
+    devices = PSY.get_components(device, sys)
 
-    else
-
-        @warn("Initial Conditions not provided, this can lead to infeasible problems")
-
-        energy_initial_conditions = zeros(length(sys.storage))
-
+    if validate_available_devices(devices, device)
+        return
     end
 
+    parameters = get(kwargs, :parameters, true)
+
     #Variables
-    activepower_variables(ps_m, sys.storage, time_range);
+    active_power_variables(ps_m, devices)
 
-    reactivepower_variables(ps_m, sys.storage, time_range);
+    reactive_power_variables(ps_m, devices)
 
-    energystorage_variables(ps_m, sys.storage, time_range);
-
-    storagereservation_variables(ps_m, sys.storage, time_range);
+    energy_storage_variables(ps_m, devices)
 
     #Constraints
-    activepower_constraints(ps_m, sys.storage, device_formulation, system_formulation, time_range)
+    active_power_constraints(ps_m, devices, device_formulation, system_formulation)
 
-    reactivepower_constraints(ps_m, sys.storage, device_formulation, system_formulation, time_range)
+    reactive_power_constraints(ps_m, devices, device_formulation, system_formulation)
+
+    energy_capacity_constraints(ps_m, devices, device_formulation, system_formulation)
 
     # Energy Balanace limits
-    energy_balance_constraint(ps_m,sys.storage, device_formulation, system_formulation, time_range, energy_initial_conditions)
+    energy_balance_constraint(ps_m, devices, device_formulation, system_formulation)
 
     return
 
 end
 
-function construct_device!(ps_m::CanonicalModel,
-                           device::Type{St},
-                           device_formulation::Type{D},
-                           system_formulation::Type{S},
-                           sys::PSY.System,
-                           time_range::UnitRange{Int64};
-                           kwargs...) where {St <: PSY.Storage,
-                                             D <: PSI.AbstractStorageForm,
-                                             S <: PM.AbstractActivePowerFormulation}
+function _internal_device_constructor!(ps_m::CanonicalModel,
+                                        device::Type{St},
+                                        device_formulation::Type{D},
+                                        system_formulation::Type{S},
+                                        sys::PSY.System;
+                                        kwargs...) where {St <: PSY.Storage,
+                                                            D <: AbstractStorageForm,
+                                                            S <: PM.AbstractActivePowerFormulation}
 
-    #wrangle initial_conditions
-    if !isempty(keys(ps_m.initial_conditions))
+    devices = PSY.get_components(device, sys)
 
-       if "energy_initial_conditions" in keys(ps_m.initial_conditions)
-         energy_initial_conditions = ps_m.initial_conditions["energy_initial_conditions"]
-       else
-        @warn("No energy initial conditions provided")
-       end
-
-    else
-        @warn("Initial Conditions not provided, this can lead to infeasible problems")
-
-        energy_initial_conditions = zeros(length(sys.storage))
-
+    if validate_available_devices(devices, device)
+        return
     end
 
+    parameters = get(kwargs, :parameters, true)
+
+
     #Variables
-    activepower_variables(ps_m, sys.storage, time_range);
+    active_power_variables(ps_m, devices);
 
-    energystorage_variables(ps_m, sys.storage, time_range);
-
-    storagereservation_variables(ps_m, sys.storage, time_range);
+    energy_storage_variables(ps_m, devices);
 
     #Constraints
-    activepower_constraints(ps_m, sys.storage, device_formulation, system_formulation, time_range)
+    active_power_constraints(ps_m, devices, device_formulation, system_formulation)
+
+    energy_capacity_constraints(ps_m, devices, device_formulation, system_formulation)
 
     # Energy Balanace limits
-    energy_balance_constraint(ps_m,sys.storage, device_formulation, system_formulation, time_range, energy_initial_conditions)
+    energy_balance_constraint(ps_m, devices, device_formulation, system_formulation)
+
+    return
+
+end
+
+function _internal_device_constructor!(ps_m::CanonicalModel,
+                                        device::Type{St},
+                                        device_formulation::Type{BookKeepingwReservation},
+                                        system_formulation::Type{S},
+                                        sys::PSY.System;
+                                        kwargs...) where {St <: PSY.Storage,
+                                                          S <: PM.AbstractPowerFormulation}
+
+
+    devices = PSY.get_components(device, sys)
+
+    if validate_available_devices(devices, device)
+        return
+    end
+
+    parameters = get(kwargs, :parameters, true)
+
+    #Variables
+    active_power_variables(ps_m, devices)
+
+    reactive_power_variables(ps_m, devices)
+
+    energy_storage_variables(ps_m, devices)
+
+    storage_reservation_variables(ps_m, devices)
+
+    #Constraints
+    active_power_constraints(ps_m, devices, device_formulation, system_formulation)
+
+    reactive_power_constraints(ps_m, devices, device_formulation, system_formulation)
+
+    energy_capacity_constraints(ps_m, devices, device_formulation, system_formulation)
+
+    # Energy Balanace limits
+    energy_balance_constraint(ps_m, devices, device_formulation, system_formulation)
+
+    return
+
+end
+
+function _internal_device_constructor!(ps_m::CanonicalModel,
+                                        device::Type{St},
+                                        device_formulation::Type{BookKeepingwReservation},
+                                        system_formulation::Type{S},
+                                        sys::PSY.System;
+                                        kwargs...) where {St <: PSY.Storage,
+                                                          S <: PM.AbstractActivePowerFormulation}
+
+    devices = PSY.get_components(device, sys)
+
+    if validate_available_devices(devices, device)
+        return
+    end
+
+    parameters = get(kwargs, :parameters, true)
+
+
+    #Variables
+    active_power_variables(ps_m, devices)
+
+    energy_storage_variables(ps_m, devices)
+
+    storage_reservation_variables(ps_m, devices)
+
+    #Constraints
+    active_power_constraints(ps_m, devices, device_formulation, system_formulation)
+
+    energy_capacity_constraints(ps_m, devices, device_formulation, system_formulation)
+
+    # Energy Balanace limits
+    energy_balance_constraint(ps_m, devices, device_formulation, system_formulation)
 
     return
 
